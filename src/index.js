@@ -1,14 +1,18 @@
 process.env.SENTRY_DSN =
   process.env.SENTRY_DSN ||
-  'https://56c58c44aec84354b340322da288e886@sentry.cozycloud.cc/60'
+  'https://199232aecda94d96ad4afb9619d38d22@errors.cozycloud.cc/35'
 
 const {
   BaseKonnector,
   requestFactory,
   signin,
   saveBills,
-  log
+  log,
+  cozyClient
 } = require('cozy-konnector-libs')
+
+const models = cozyClient.new.models
+const { Qualification } = models.document
 
 const moment = require('moment')
 const USER_AGENT =
@@ -51,13 +55,16 @@ async function start(fields) {
   log('info', 'Saving data to Cozy')
   await saveBills(documents, fields.folderPath, {
     keys: ['vendor', 'billId'], // deduplication keys
-    identifiers: ['mediapart'] // bank operations
+    identifiers: ['mediapart'], // bank operations
+    sourceAccount: this.accountId,
+    sourceAccountIdentifier: fields.login,
+    contentType: 'application/pdf'
   })
 }
 
 function authenticate(name, password) {
   return signin({
-    url: 'https://www.mediapart.fr/',
+    url: 'https://www.mediapart.fr/login',
     formSelector: '#logFormEl',
     formData: { name, password },
     // the validate function will check if
@@ -95,23 +102,20 @@ function parseDocuments($) {
   const metadata = { date, version }
 
   const listOfRecents = $('table li')
-    .filter(function(idx, li) {
+    .filter(function (idx, li) {
       return $(li).find('a').length !== 0 // Throw line without pdf link
     })
-    .map(function(idx, li) {
+    .map(function (idx, li) {
       try {
-        const re = /.*(\d\d\/\d\d\/\d\d\d\d).*(\d\d\/\d\d\/\d\d\d\d)[\s.]*(\d+,\d\d)\s+(\S+).*/
-        const [, start, end, price, currency] = $(li)
-          .text()
-          .match(re)
+        const re =
+          /.*(\d\d\/\d\d\/\d\d\d\d).*(\d\d\/\d\d\/\d\d\d\d)[\s.]*(\d+,\d\d)\s+(\S+).*/
+        const [, start, end, price, currency] = $(li).text().match(re)
         const oStart = moment.utc(start, 'DD/MM/YYYY')
         const oEnd = moment.utc(end, 'DD/MM/YYYY')
         const startDate = oStart.format('YYYY-MM-DD')
         const endDate = oEnd.format('YYYY-MM-DD')
         const date = oEnd.toDate()
-        const href = $('a', li)
-          .first()
-          .attr('href')
+        const href = $('a', li).first().attr('href')
         const fileurl = `https://moncompte.mediapart.fr/base/moncompte/${href}`
         const billId = href.match(/get_facture=([^&]+)/)[1]
         const title = `Mediapart ${billId} ${startDate} - ${endDate}`
@@ -129,6 +133,17 @@ function parseDocuments($) {
           currency,
           filename,
           fileurl,
+          fileAttributes: {
+            metadata: {
+              contentAuthor: 'mediapart.fr',
+              issueDate: moment.utc(new Date(), 'YYYY-MM-DD'),
+              datetime: startDate,
+              datetimeLabel: `issueDate`,
+              isSubscription: true,
+              carbonCopy: true,
+              qualification: Qualification.getByLabel('other_invoice')
+            }
+          },
           requestOptions: {
             headers: {
               'User-Agent': USER_AGENT
@@ -145,19 +160,15 @@ function parseDocuments($) {
 
   let listOfOlds = []
   listOfOlds = $('table tr')
-    .filter(function(idx, tr) {
+    .filter(function (idx, tr) {
       // Throw lines not format like a bill line
       // Throw lines with no pdf link as subcribe gift
       return $(tr).attr('valign') === 'middle' && $(tr).find('a').length !== 0
     })
-    .map(function(idx, tr) {
+    .map(function (idx, tr) {
       try {
         const re = /.*(\d\d\/\d\d\/\d\d\d\d).*(\d\d\/\d\d\/\d\d\d\d).*/
-        const [, start, end] = $(tr)
-          .find('td')
-          .text()
-          .trim()
-          .match(re)
+        const [, start, end] = $(tr).find('td').text().trim().match(re)
         const oStart = moment.utc(start, 'DD/MM/YYYY')
         const oEnd = moment.utc(end, 'DD/MM/YYYY')
         const startDate = oStart.format('YYYY-MM-DD')
@@ -169,9 +180,7 @@ function parseDocuments($) {
           .text()
           .trim()
           .split('\xa0') // Unbreakable space
-        const href = $('a', tr)
-          .first()
-          .attr('href')
+        const href = $('a', tr).first().attr('href')
         const fileurl = `https://moncompte.mediapart.fr/base/moncompte/${href}`
         const billId = href.match(/get_facture=([^&]+)/)[1]
         const title = `Mediapart ${billId} ${startDate} - ${endDate}`
@@ -188,7 +197,18 @@ function parseDocuments($) {
           billId,
           currency,
           filename,
-          fileurl
+          fileurl,
+          fileAttributes: {
+            metadata: {
+              contentAuthor: 'mediapart.fr',
+              issueDate: moment.utc(new Date(), 'YYYY-MM-DD'),
+              datetime: date,
+              datetimeLabel: `issueDate`,
+              isSubscription: true,
+              carbonCopy: true,
+              qualification: Qualification.getByLabel('other_invoice')
+            }
+          }
         }
       } catch (err) {
         log('warn', 'Impossible to parse one line')
