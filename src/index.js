@@ -76,21 +76,30 @@ function authenticate(name, password) {
 
 function parseDocuments($) {
   const orders = []
+  const foundFiles = []
   $('.billing__list__item').each((i, el) => {
     const billData = $(el).html().replace(/\s\s+/g, ' ')
-    const [foundHref, billId] = billData.match(
+    foundFiles.push(billData)
+  })
+  const validFiles = foundFiles.filter(el => {
+    if (el.match(/<a href="\/facture\/(\d*)\/telecharger"/)) {
+      return el
+    }
+  })
+  validFiles.forEach(el => {
+    const [foundHref, billId] = el.match(
       /<a href="\/facture\/(\d*)\/telecharger"/
     )
     const href = foundHref.split('"')[1]
-    const foundDates = billData.match(
+    const foundDates = el.match(
       /Du (\d){2}\/(\d){2}\/(\d){4} au (\d){2}\/(\d){2}\/(\d){4}/
     )[0]
     const [, foundStartDate, , foundEndDate] = foundDates.split(' ')
     const { startDate, endDate } = formatDates(foundStartDate, foundEndDate)
     const fileurl = `https://moncompte.mediapart.fr${href}`
     const title = `Mediapart ${billId} ${startDate} - ${endDate}`
-    const filename = `mediapart_${billId}_${startDate}_${endDate}.pdf`
-    const [amount, currency] = billData
+    const filename = `Facture Mediapart du ${startDate} au ${endDate} (${billId}).pdf`
+    const [amount, currency] = el
       .match(/ ([0-9.]*) €/)[0]
       .trim()
       .split(' ')
