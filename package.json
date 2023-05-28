@@ -1,6 +1,6 @@
 {
   "name": "mediapart",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Fetch Mediapart bills",
   "repository": {
     "type": "git",
@@ -45,6 +45,6 @@
   },
   "devDependencies": {
     "cozy-jobs-cli": "1.20.2",
-    "cozy-konnector-build": "1.4.5"
+    "cozy-konnector-build": "1.5.1"
   }
 }
